@@ -6,7 +6,7 @@ type Task = Box<dyn FnOnce() -> () + Send>;
 
 pub struct ThreadPool {
     threads: Vec<JoinHandle<()>>,
-    sender: Sender<Task>,
+    sender: Option<Sender<Task>>,
 }
 
 impl ThreadPool {
@@ -19,23 +19,47 @@ impl ThreadPool {
         for _ in 0..size {
             let receiver = receiver.clone();
             let thread = std::thread::spawn(move || loop {
-                if let Ok(task) = {
+                let res = {
                     let rx = receiver.lock().unwrap();
                     rx.recv()
-                } {
-                    task();
+                };
+
+                match res {
+                    Ok(task) => {
+                        task();
+                    }
+                    Err(_) => {
+                        return;
+                    }
                 }
             });
             threads.push(thread);
         }
 
-        Self { threads, sender }
+        Self {
+            threads,
+            sender: Some(sender),
+        }
     }
 
     pub fn spawn<F>(&mut self, callback: F)
     where
         F: FnOnce() -> () + Send + 'static,
     {
-        self.sender.send(Box::new(callback)).unwrap();
+        let Some(sender) = &mut self.sender else {
+            panic!("ThreadPool sender must exist before drop");
+        };
+        sender.send(Box::new(callback)).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        let sender = self.sender.take();
+        drop(sender);
+
+        while let Some(thread) = self.threads.pop() {
+            thread.join().unwrap();
+        }
     }
 }
