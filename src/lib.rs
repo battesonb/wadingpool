@@ -1,6 +1,9 @@
 use std::num::NonZeroUsize;
 use std::sync::{self, mpsc::Sender, Arc, Mutex};
 use std::thread::JoinHandle;
+use tracing::info_span;
+
+use tracing::trace;
 
 type Task = Box<dyn FnOnce() -> () + Send>;
 
@@ -18,18 +21,25 @@ impl ThreadPool {
         let receiver = Arc::new(Mutex::new(receiver));
         for _ in 0..size {
             let receiver = receiver.clone();
-            let thread = std::thread::spawn(move || loop {
-                let res = {
-                    let rx = receiver.lock().unwrap();
-                    rx.recv()
-                };
+            let thread = std::thread::spawn(move || {
+                let span = info_span!("worker", id = ?std::thread::current().id());
+                let _enter = span.enter();
+                trace!("Started",);
+                loop {
+                    let res = {
+                        let rx = receiver.lock().unwrap();
+                        rx.recv()
+                    };
 
-                match res {
-                    Ok(task) => {
-                        task();
-                    }
-                    Err(_) => {
-                        return;
+                    match res {
+                        Ok(task) => {
+                            trace!("Received task");
+                            task();
+                        }
+                        Err(_) => {
+                            trace!("Shutdown");
+                            return;
+                        }
                     }
                 }
             });
