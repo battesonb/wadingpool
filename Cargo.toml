@@ -1,0 +1,6 @@
+[package]
+authors = ["Byron Batteson"]
+description = "A thread pool implementation for educational purposes"
+edition = "2021"
+name = "wadingpool"
+version = "0.1.0"
