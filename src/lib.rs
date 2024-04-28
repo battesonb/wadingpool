@@ -63,3 +63,36 @@ impl Drop for ThreadPool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+    use std::{num::NonZeroUsize, sync::atomic::AtomicUsize};
+
+    use crate::ThreadPool;
+
+    #[test]
+    fn it_accepts_more_tasks_than_threads() {
+        let mut pool = ThreadPool::new(NonZeroUsize::new(4).unwrap());
+        let counter = Arc::new(AtomicUsize::new(0));
+        let total = 10;
+
+        for _ in 0..total {
+            let counter = counter.clone();
+            pool.spawn(move || {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+
+        for _ in 0..5 {
+            let value = counter.load(std::sync::atomic::Ordering::SeqCst);
+            if value == total {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        panic!("Counter never reached expected value");
+    }
+}
